@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import plistlib
+import re
 import struct
 import tempfile
 import unittest
@@ -22,6 +23,14 @@ check = load('check_ipa').check
 
 
 class BuildToolsTests(unittest.TestCase):
+    def test_main_application_display_name(self):
+        root = Path(__file__).resolve().parents[1]
+        build = (root / 'Telegram/BUILD').read_text(encoding='utf-8')
+        match = re.search(r'plist_fragment\(\s*name\s*=\s*"TelegramInfoPlist",.*?template\s*=\s*"""(.*?)"""', build, re.S)
+        self.assertIsNotNone(match, 'Main app plist template was not found')
+        info = plistlib.loads(('<plist><dict>' + match.group(1) + '</dict></plist>').encode('utf-8'))
+        self.assertEqual(info['CFBundleDisplayName'], 'AnchorGram', 'Rename the main app, not only extension plist fragments')
+
     def test_configuration_validated_and_not_logged(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

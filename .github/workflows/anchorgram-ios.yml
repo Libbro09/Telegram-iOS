@@ -57,7 +57,8 @@ jobs:
       - name: Prepare unsigned device archive rules
         if: inputs.build_ipa
         run: python3 anchorgram/patch_unsigned_rules.py
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: bazel_cache
         if: inputs.build_ipa
         with:
           path: ~/anchorgram-bazel-cache
@@ -77,12 +78,39 @@ jobs:
             --buildNumber "$GITHUB_RUN_NUMBER" \
             --configuration release_arm64 \
             --outputBuildArtifactsPath build/artifacts
-          python3 anchorgram/check_ipa.py build/artifacts/Telegram.ipa
-          cp build/artifacts/Telegram.ipa build/artifacts/AnchorGram-unsigned.ipa
-      - uses: actions/upload-artifact@v4
-        if: inputs.build_ipa
+      - name: Preserve compiled IPA
+        id: collect_ipa
+        if: ${{ always() && inputs.build_ipa }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/artifacts
+          if [ -f bazel-bin/Telegram/Telegram.ipa ]; then
+            cp bazel-bin/Telegram/Telegram.ipa build/artifacts/AnchorGram-unsigned.ipa
+          elif [ -f build/artifacts/Telegram.ipa ]; then
+            cp build/artifacts/Telegram.ipa build/artifacts/AnchorGram-unsigned.ipa
+          fi
+          if [ -f build/artifacts/AnchorGram-unsigned.ipa ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "No compiled IPA was produced by this job."
+          fi
+      - name: Upload IPA before validation
+        uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.collect_ipa.outputs.available == 'true' }}
         with:
           name: AnchorGram-unsigned
           path: build/artifacts/AnchorGram-unsigned.ipa
           if-no-files-found: error
           retention-days: 7
+      - name: Validate uploaded IPA
+        if: ${{ always() && steps.collect_ipa.outputs.available == 'true' }}
+        run: python3 anchorgram/check_ipa.py build/artifacts/AnchorGram-unsigned.ipa
+      - name: Save compiler cache even after failure
+        uses: actions/cache/save@v4
+        if: ${{ !cancelled() && inputs.build_ipa && steps.bazel_cache.outcome == 'success' && steps.bazel_cache.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        with:
+          path: ~/anchorgram-bazel-cache
+          key: ${{ steps.bazel_cache.outputs.cache-primary-key }}

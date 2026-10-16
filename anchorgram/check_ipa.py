@@ -9,7 +9,7 @@ def check(path: Path) -> None:
     with zipfile.ZipFile(path) as archive:
         info = plistlib.loads(archive.read('Payload/Telegram.app/Info.plist'))
         if info.get('CFBundleDisplayName') != 'AnchorGram':
-            raise ValueError('Unexpected app name')
+            raise ValueError(f"Unexpected app display name: {info.get('CFBundleDisplayName')!r}; expected 'AnchorGram'")
         if info.get('CFBundleIdentifier') != 'org.libbro09.anchorgram':
             raise ValueError('Unexpected bundle id')
         executable = archive.read('Payload/Telegram.app/' + info['CFBundleExecutable'])
