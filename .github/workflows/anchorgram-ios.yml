@@ -54,6 +54,9 @@ jobs:
       - name: Fetch pinned dependencies
         if: inputs.build_ipa
         run: git submodule update --init --recursive --jobs 4
+      - name: Prepare unsigned device archive rules
+        if: inputs.build_ipa
+        run: python3 anchorgram/patch_unsigned_rules.py
       - uses: actions/cache@v4
         if: inputs.build_ipa
         with:

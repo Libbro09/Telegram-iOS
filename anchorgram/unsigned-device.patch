@@ -1,0 +1,15 @@
+--- a/apple/internal/ios_rules.bzl
++++ b/apple/internal/ios_rules.bzl
+@@ -449,7 +449,11 @@
+         ),
+     )
+ 
+-    if platform_prerequisites.platform.is_device:
++    if platform_prerequisites.platform.is_device and codesigning_support.should_sign_bundles(
++        provisioning_profile = provisioning_profile,
++        rule_descriptor = rule_descriptor,
++        features = features,
++    ):
+         processor_partials.append(
+             partials.provisioning_profile_partial(
+                 actions = actions,
