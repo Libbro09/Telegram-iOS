@@ -755,11 +755,7 @@ extension ChatControllerImpl {
             }
             
             let _ = (enqueueMessages(account: self.context.account, peerId: peerId, messages: transformedMessages)
-            |> deliverOnMainQueue).startStandalone(next: { [weak self] _ in
-                if let strongSelf = self, strongSelf.presentationInterfaceState.subject != .scheduledMessages {
-                    strongSelf.chatDisplayNode.historyNode.scrollToEndOfHistory()
-                }
-            })
+            |> deliverOnMainQueue).startStandalone()
             
             donateSendMessageIntent(account: self.context.account, sharedContext: self.context.sharedContext, intentContext: .chat, peerIds: [peerId])
         case .video:

@@ -1,0 +1,85 @@
+name: AnchorGram iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_ipa:
+        description: Build device IPA after source checks
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: anchorgram-ios-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 350
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Check toolchain and Swift syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          python3 anchorgram/test_build_tools.py
+          python3 - <<'PY'
+          import json, subprocess
+          version = json.load(open('versions.json'))['xcode']
+          actual = subprocess.check_output(['xcodebuild', '-version'], text=True).splitlines()[0]
+          if actual != 'Xcode ' + version:
+              raise SystemExit(f'Expected Xcode {version}, got {actual}')
+          PY
+          xcrun swiftc -frontend -parse \
+            submodules/TelegramUI/Sources/PreparedChatHistoryViewTransition.swift \
+            submodules/TelegramUI/Sources/ChatController.swift \
+            submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift \
+            submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
+      - name: Prepare private build configuration
+        if: inputs.build_ipa
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: python3 anchorgram/prepare_build.py
+      - name: Fetch pinned dependencies
+        if: inputs.build_ipa
+        run: git submodule update --init --recursive --jobs 4
+      - uses: actions/cache@v4
+        if: inputs.build_ipa
+        with:
+          path: ~/anchorgram-bazel-cache
+          key: anchorgram-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('versions.json', 'MODULE.bazel.lock') }}-${{ github.sha }}
+          restore-keys: |
+            anchorgram-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('versions.json', 'MODULE.bazel.lock') }}-
+      - name: Build unsigned release for ESign
+        if: inputs.build_ipa
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 build-system/Make/Make.py \
+            --cacheDir "$HOME/anchorgram-bazel-cache" \
+            build \
+            --configurationPath build-input/anchorgram-configuration.json \
+            --xcodeManagedCodesigning \
+            --buildNumber "$GITHUB_RUN_NUMBER" \
+            --configuration release_arm64 \
+            --outputBuildArtifactsPath build/artifacts
+          python3 anchorgram/check_ipa.py build/artifacts/Telegram.ipa
+          cp build/artifacts/Telegram.ipa build/artifacts/AnchorGram-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        if: inputs.build_ipa
+        with:
+          name: AnchorGram-unsigned
+          path: build/artifacts/AnchorGram-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7

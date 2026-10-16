@@ -9154,11 +9154,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 self.commitPurposefulAction()
                 
                 let _ = (enqueueMessages(account: self.context.account, peerId: peerId, messages: self.transformEnqueueMessages(messages, postpone: postpone))
-                |> deliverOnMainQueue).startStandalone(next: { [weak self] _ in
-                    if let strongSelf = self, strongSelf.presentationInterfaceState.subject != .scheduledMessages {
-                        strongSelf.chatDisplayNode.historyNode.scrollToEndOfHistory()
-                    }
-                })
+                |> deliverOnMainQueue).startStandalone()
                 
                 donateSendMessageIntent(account: self.context.account, sharedContext: self.context.sharedContext, intentContext: .chat, peerIds: [peerId])
                 

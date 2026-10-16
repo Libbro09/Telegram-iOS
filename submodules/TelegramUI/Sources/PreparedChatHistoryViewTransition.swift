@@ -109,6 +109,31 @@ func preparedChatHistoryViewTransition(from fromView: ChatHistoryView?, to toVie
         stationaryItemRange = (0, Int.max)
     }
     
+    let preserveOutgoingPosition: Bool
+    if case .InteractiveChanges = reason, fromView != nil, scrollPosition == nil {
+        let isPendingOutgoing: (ChatHistoryEntry) -> Bool = { entry in
+            switch entry {
+            case let .MessageEntry(message, _, _, _, _, _):
+                return !message.flags.contains(.Incoming) && !message.flags.intersection([.Unsent, .Sending, .Failed]).isEmpty
+            case let .MessageGroupEntry(_, messages, _):
+                return messages.contains { message in
+                    !message.0.flags.contains(.Incoming) && !message.0.flags.intersection([.Unsent, .Sending, .Failed]).isEmpty
+                }
+            default:
+                return false
+            }
+        }
+        preserveOutgoingPosition = mergeResult.indicesAndItems.contains { isPendingOutgoing($0.1) }
+            || mergeResult.updateIndices.contains { isPendingOutgoing($0.1) }
+    } else {
+        preserveOutgoingPosition = false
+    }
+    if preserveOutgoingPosition {
+        stationaryItemRange = (0, Int.max)
+        maxAnimatedInsertionIndex = -1
+        options.remove(.AnimateInsertion)
+    }
+
     for (index, entry, previousIndex) in mergeResult.indicesAndItems {
         let adjustedIndex = updatedCount - 1 - index
         

@@ -896,6 +896,19 @@ extension ChatControllerImpl {
             guard let self else {
                 return
             }
+            if self.presentationInterfaceState.subject != .scheduledMessages {
+                self.layoutActionOnViewTransitionAction = nil
+                self.chatDisplayNode.historyNode.layoutActionOnViewTransition = ({ transition in
+                    f()
+                    var transition = transition
+                    transition.scrollToItem = nil
+                    transition.stationaryItemRange = (0, Int.max)
+                    transition.options.remove(.AnimateInsertion)
+                    transition.options.remove(.RequestItemInsertionAnimations)
+                    return (transition, nil)
+                }, messageCorrelationId)
+                return
+            }
             self.layoutActionOnViewTransitionAction = f
             
             if !enableSendAnimationV2 {
@@ -1118,8 +1131,6 @@ extension ChatControllerImpl {
                         }
                         if case .scheduledMessages = strongSelf.presentationInterfaceState.subject {
                         } else {
-                            strongSelf.chatDisplayNode.historyNode.scrollToEndOfHistory()
-                            
                             if shouldOpenScheduledMessages {
                                 if let layoutActionOnViewTransitionAction = strongSelf.layoutActionOnViewTransitionAction {
                                     strongSelf.layoutActionOnViewTransitionAction = nil
@@ -5363,14 +5374,7 @@ extension ChatControllerImpl {
                 }))
                 
                 self.sentPeerMediaMessageEventsDisposable.dispose()
-                self.sentPeerMediaMessageEventsDisposable.set(
-                    (self.context.account.pendingPeerMediaUploadManager.sentMessageEvents(peerId: peerId)
-                    |> deliverOnMainQueue).startStrict(next: { [weak self] _ in
-                        if let self {
-                            self.chatDisplayNode.historyNode.scrollToEndOfHistory()
-                        }
-                    })
-                )
+
             }
         }
         
