@@ -8,6 +8,7 @@ on:
 
 jobs:
   build:
+    if: github.repository == 'TelegramMessenger/Telegram-iOS'
     runs-on: macos-13
 
     steps:
