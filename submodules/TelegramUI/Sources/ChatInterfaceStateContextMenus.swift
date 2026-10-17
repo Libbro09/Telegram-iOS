@@ -1947,6 +1947,20 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
 
         if data.messageActions.options.contains(.forward) {
             if !isCopyProtected {
+                if let chatController = interfaceInteraction.chatController() as? ChatControllerImpl {
+                    actions.append(.action(ContextMenuActionItem(text: "В Избранное", icon: { theme in
+                        return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Forward"), color: theme.actionSheet.primaryTextColor)
+                    }, action: { [weak chatController] _, f in
+                        f(.dismissWithoutContent)
+                        chatController?.anchorgramQuickSaved(message)
+                    })))
+                    actions.append(.action(ContextMenuActionItem(text: "Быстрая отправка…", icon: { theme in
+                        return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Forward"), color: theme.actionSheet.primaryTextColor)
+                    }, action: { [weak chatController] _, f in
+                        f(.dismissWithoutContent)
+                        chatController?.anchorgramQuickMenu(message)
+                    })))
+                }
                 actions.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Conversation_ContextMenuForward, icon: { theme in
                     return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Forward"), color: theme.actionSheet.primaryTextColor)
                 }, action: { _, f in

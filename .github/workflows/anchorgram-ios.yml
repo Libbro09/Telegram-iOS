@@ -34,6 +34,8 @@ jobs:
           python3 anchorgram/test_build_tools.py
           xcrun swiftc submodules/PasscodeCore/Sources/PasscodeAccessGroupPolicy.swift anchorgram/test_access_groups.swift -o "$RUNNER_TEMP/anchorgram-access-group-tests"
           "$RUNNER_TEMP/anchorgram-access-group-tests"
+          xcrun swiftc submodules/TelegramUI/Sources/AnchorGramQuickRules.swift anchorgram/test_quick_rules.swift -o "$RUNNER_TEMP/anchorgram-quick-rules-tests"
+          "$RUNNER_TEMP/anchorgram-quick-rules-tests"
           python3 - <<'PY'
           import json, subprocess
           version = json.load(open('versions.json'))['xcode']
@@ -46,6 +48,10 @@ jobs:
             submodules/TelegramUI/Sources/ChatController.swift \
             submodules/TelegramUI/Sources/AppDelegate.swift \
             submodules/TelegramUI/Sources/AnchorGramStorage.swift \
+            submodules/TelegramUI/Sources/AnchorGramQuickForward.swift \
+            submodules/TelegramUI/Sources/AnchorGramQuickRules.swift \
+            submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift \
+            submodules/TelegramCore/Sources/TelegramEngine/Messages/AnchorGramRequestSearch.swift \
             submodules/PasscodeCore/Sources/Passcode.swift \
             submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift \
             submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
