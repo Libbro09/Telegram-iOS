@@ -68,6 +68,33 @@ extension ChatControllerImpl {
                     if itemList.isEmpty {
                         return
                     }
+                    // Install shortcuts on the final menu using its owning controller.
+                    // Reuse the native Forward action as the permission gate; do not
+                    // depend on a separately supplied interfaceInteraction controller.
+                    if let forwardIndex = itemList.firstIndex(where: { item in
+                        if case let .action(action) = item {
+                            return action.text == presentationData.strings.Conversation_ContextMenuForward
+                        }
+                        return false
+                    }) {
+                        var items = itemList
+                        let shortcuts: [ContextMenuItem] = [
+                            .action(ContextMenuActionItem(text: "В Избранное", icon: { theme in
+                                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Forward"), color: theme.actionSheet.primaryTextColor)
+                            }, action: { [weak self] _, completion in
+                                completion(.dismissWithoutContent)
+                                self?.anchorgramQuickSaved(topMessage)
+                            })),
+                            .action(ContextMenuActionItem(text: "Быстрая отправка…", icon: { theme in
+                                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Forward"), color: theme.actionSheet.primaryTextColor)
+                            }, action: { [weak self] _, completion in
+                                completion(.dismissWithoutContent)
+                                self?.anchorgramQuickMenu(topMessage)
+                            }))
+                        ]
+                        items.insert(contentsOf: shortcuts, at: forwardIndex)
+                        actions.content = .list(items)
+                    }
                 case .custom, .twoLists:
                     break
                 }
