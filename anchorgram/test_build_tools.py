@@ -101,6 +101,8 @@ class BuildToolsTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 check(path, 'app.example.anchorgram', 'group.example.1')
             with self.assertRaises(ValueError):
+                check(path, 'app.example.anchorgram', 'group.example.1', expected_version='13.0.1')
+            with self.assertRaises(ValueError):
                 check(path, 'app.example.anchorgram', 'group.other.1')
 
     def test_profile_rejects_incompatible_identity(self):

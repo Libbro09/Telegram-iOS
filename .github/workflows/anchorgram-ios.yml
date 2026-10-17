@@ -53,6 +53,7 @@ jobs:
             submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift \
             submodules/TelegramCore/Sources/TelegramEngine/Messages/AnchorGramRequestSearch.swift \
             submodules/PasscodeCore/Sources/Passcode.swift \
+            submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift \
             submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift \
             submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
       - name: Prepare private build configuration
@@ -119,7 +120,7 @@ jobs:
           retention-days: 7
       - name: Validate uploaded IPA
         if: ${{ always() && steps.collect_ipa.outputs.available == 'true' }}
-        run: python3 anchorgram/check_ipa.py build/artifacts/AnchorGram-unsigned.ipa --configuration build-input/anchorgram-configuration.json
+        run: python3 anchorgram/check_ipa.py build/artifacts/AnchorGram-unsigned.ipa --configuration build-input/anchorgram-configuration.json --expected-version 13.0.1
       - name: Save compiler cache even after failure
         uses: actions/cache/save@v4
         if: ${{ !cancelled() && inputs.build_ipa && steps.bazel_cache.outcome == 'success' && steps.bazel_cache.outputs.cache-hit != 'true' }}

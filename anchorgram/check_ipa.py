@@ -7,11 +7,13 @@ import sys
 import zipfile
 
 
-def check(path: Path, expected_bundle_id: str = 'org.libbro09.anchorgram', expected_app_group: str | None = None) -> None:
+def check(path: Path, expected_bundle_id: str = 'org.libbro09.anchorgram', expected_app_group: str | None = None, expected_version: str | None = None) -> None:
     with zipfile.ZipFile(path) as archive:
         info = plistlib.loads(archive.read('Payload/Telegram.app/Info.plist'))
         if info.get('CFBundleDisplayName') != 'AnchorGram':
             raise ValueError(f"Unexpected app display name: {info.get('CFBundleDisplayName')!r}; expected 'AnchorGram'")
+        if expected_version is not None and info.get('CFBundleShortVersionString') != expected_version:
+            raise ValueError('Unexpected application version; possible stale IPA')
         if info.get('CFBundleIdentifier') != expected_bundle_id:
             raise ValueError('Unexpected bundle id')
         if expected_app_group is not None and info.get('AnchorGramAppGroup') != expected_app_group:
@@ -42,6 +44,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('ipa', type=Path)
     parser.add_argument('--configuration', type=Path)
+    parser.add_argument('--expected-version')
     args = parser.parse_args()
     configuration = json.loads(args.configuration.read_text(encoding='utf-8')) if args.configuration else {}
-    check(args.ipa, configuration.get('bundle_id', 'org.libbro09.anchorgram'), configuration.get('app_group_id'))
+    check(args.ipa, configuration.get('bundle_id', 'org.libbro09.anchorgram'), configuration.get('app_group_id'), args.expected_version)
