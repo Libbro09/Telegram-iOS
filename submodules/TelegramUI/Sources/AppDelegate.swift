@@ -571,7 +571,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         } catch {
             let alert = UIAlertController(title: "AnchorGram: signing error", message: "The signing profile does not grant the required Keychain access. Re-sign with the matching profile and bundle identifier.", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))
-            self.mainWindow?.presentNative(alert)
+            self.window?.makeKeyAndVisible()
+            DispatchQueue.main.async { [weak self] in
+                self?.mainWindow?.presentNative(alert)
+            }
             return true
         }
         let maybeAppGroupUrl = anchorgramContainerURL(appGroupName: appGroupName, baseAppBundleId: baseAppBundleId)
@@ -700,7 +703,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         guard let appGroupUrl = maybeAppGroupUrl else {
             let alert = UIAlertController(title: "AnchorGram: storage unavailable", message: "The signed app cannot open App Group \(appGroupName). Keep this App Group entitlement when signing in ESign.", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))
-            self.mainWindow?.presentNative(alert)
+            self.window?.makeKeyAndVisible()
+            DispatchQueue.main.async { [weak self] in
+                self?.mainWindow?.presentNative(alert)
+            }
             return true
         }
         
