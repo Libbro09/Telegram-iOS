@@ -32,6 +32,8 @@ jobs:
           set -euo pipefail
           xcodebuild -version
           python3 anchorgram/test_build_tools.py
+          xcrun swiftc submodules/PasscodeCore/Sources/PasscodeAccessGroupPolicy.swift anchorgram/test_access_groups.swift -o "$RUNNER_TEMP/anchorgram-access-group-tests"
+          "$RUNNER_TEMP/anchorgram-access-group-tests"
           python3 - <<'PY'
           import json, subprocess
           version = json.load(open('versions.json'))['xcode']
@@ -42,6 +44,9 @@ jobs:
           xcrun swiftc -frontend -parse \
             submodules/TelegramUI/Sources/PreparedChatHistoryViewTransition.swift \
             submodules/TelegramUI/Sources/ChatController.swift \
+            submodules/TelegramUI/Sources/AppDelegate.swift \
+            submodules/TelegramUI/Sources/AnchorGramStorage.swift \
+            submodules/PasscodeCore/Sources/Passcode.swift \
             submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift \
             submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
       - name: Prepare private build configuration
@@ -50,6 +55,8 @@ jobs:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          ANCHORGRAM_BUNDLE_ID: ${{ vars.ANCHORGRAM_BUNDLE_ID || 'org.libbro09.anchorgram' }}
+          APPLE_APP_GROUP: ${{ vars.APPLE_APP_GROUP }}
         run: python3 anchorgram/prepare_build.py
       - name: Fetch pinned dependencies
         if: inputs.build_ipa
@@ -106,7 +113,7 @@ jobs:
           retention-days: 7
       - name: Validate uploaded IPA
         if: ${{ always() && steps.collect_ipa.outputs.available == 'true' }}
-        run: python3 anchorgram/check_ipa.py build/artifacts/AnchorGram-unsigned.ipa
+        run: python3 anchorgram/check_ipa.py build/artifacts/AnchorGram-unsigned.ipa --configuration build-input/anchorgram-configuration.json
       - name: Save compiler cache even after failure
         uses: actions/cache/save@v4
         if: ${{ !cancelled() && inputs.build_ipa && steps.bazel_cache.outcome == 'success' && steps.bazel_cache.outputs.cache-hit != 'true' }}

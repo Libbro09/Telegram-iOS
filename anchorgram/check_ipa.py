@@ -1,17 +1,21 @@
 import plistlib
+import argparse
+import json
 from pathlib import Path
 import struct
 import sys
 import zipfile
 
 
-def check(path: Path) -> None:
+def check(path: Path, expected_bundle_id: str = 'org.libbro09.anchorgram', expected_app_group: str | None = None) -> None:
     with zipfile.ZipFile(path) as archive:
         info = plistlib.loads(archive.read('Payload/Telegram.app/Info.plist'))
         if info.get('CFBundleDisplayName') != 'AnchorGram':
             raise ValueError(f"Unexpected app display name: {info.get('CFBundleDisplayName')!r}; expected 'AnchorGram'")
-        if info.get('CFBundleIdentifier') != 'org.libbro09.anchorgram':
+        if info.get('CFBundleIdentifier') != expected_bundle_id:
             raise ValueError('Unexpected bundle id')
+        if expected_app_group is not None and info.get('AnchorGramAppGroup') != expected_app_group:
+            raise ValueError('Unexpected configured App Group')
         executable = archive.read('Payload/Telegram.app/' + info['CFBundleExecutable'])
         magic, cpu = struct.unpack_from('<II', executable)
         if magic != 0xFEEDFACF or cpu != 0x0100000C:
@@ -35,4 +39,9 @@ def check(path: Path) -> None:
 
 
 if __name__ == '__main__':
-    check(Path(sys.argv[1]))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('ipa', type=Path)
+    parser.add_argument('--configuration', type=Path)
+    args = parser.parse_args()
+    configuration = json.loads(args.configuration.read_text(encoding='utf-8')) if args.configuration else {}
+    check(args.ipa, configuration.get('bundle_id', 'org.libbro09.anchorgram'), configuration.get('app_group_id'))

@@ -14,12 +14,14 @@ public struct PasscodeConfiguration: Equatable, Sendable {
     public let processRole: ProcessRole
     public let biometricKeychainService: String?
     public let keychainScope: String?
+    public let keychainAccessGroup: String?
 
-    public init(appGroupIdentifier: String, processRole: ProcessRole, biometricKeychainService: String? = nil, keychainScope: String? = nil) {
+    public init(appGroupIdentifier: String, processRole: ProcessRole, biometricKeychainService: String? = nil, keychainScope: String? = nil, keychainAccessGroup: String? = nil) {
         self.appGroupIdentifier = appGroupIdentifier
         self.processRole = processRole
         self.biometricKeychainService = biometricKeychainService
         self.keychainScope = keychainScope
+        self.keychainAccessGroup = keychainAccessGroup
     }
 }
 
@@ -52,6 +54,11 @@ public final class PasscodeEnvironment: @unchecked Sendable {
             return
         }
         guard configuration.processRole != .mainApp || privateAccessGroup != nil else { throw PasscodeError.unavailable }
+        if let group = configuration.keychainAccessGroup {
+            guard PasscodeAccessGroupPolicy.acceptsOverride(group, resolvedPrivateGroup: privateAccessGroup?(), isMainApp: configuration.processRole == .mainApp) else {
+                throw PasscodeError.unavailable
+            }
+        }
         self.configuration = configuration
         self.resolvePrivateAccessGroup = privateAccessGroup
     }
@@ -73,7 +80,7 @@ public final class PasscodeEnvironment: @unchecked Sendable {
         self.mutex.lock()
         defer { self.mutex.unlock() }
         guard let configuration = self.configuration else { throw PasscodeError.unavailable }
-        return configuration.appGroupIdentifier
+        return configuration.keychainAccessGroup ?? configuration.appGroupIdentifier
     }
 
     func biometricKeychainService() throws -> String {
@@ -95,9 +102,13 @@ public final class PasscodeEnvironment: @unchecked Sendable {
             throw PasscodeError.unavailable
         }
         #if !os(macOS)
-        guard !group.hasPrefix("group."),
-              group.hasSuffix("." + configuration.appGroupIdentifier.dropFirst("group.".count)) else {
-            throw PasscodeError.unavailable
+        if let expectedGroup = configuration.keychainAccessGroup {
+            guard group == expectedGroup else { throw PasscodeError.unavailable }
+        } else {
+            guard !group.hasPrefix("group."),
+                  group.hasSuffix("." + configuration.appGroupIdentifier.dropFirst("group.".count)) else {
+                throw PasscodeError.unavailable
+            }
         }
         #endif
         self.resolvedPrivateAccessGroup = group

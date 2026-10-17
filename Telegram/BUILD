@@ -53,6 +53,7 @@ load(
     "telegram_bazel_path",
     "telegram_use_xcode_managed_codesigning",
     "telegram_bundle_id",
+    "telegram_app_group_id",
     "telegram_aps_environment",
     "telegram_team_id",
     "telegram_enable_icloud",
@@ -545,11 +546,12 @@ aps_fragment = "" if telegram_aps_environment == "" else """
 app_groups_fragment = """
     <key>com.apple.security.application-groups</key>
     <array>
-        <string>group.{telegram_bundle_id}</string>
+        <string>{telegram_app_group_id}</string>
     </array>
     <key>application-identifier</key>
     <string>{telegram_team_id}.{telegram_bundle_id}</string>
 """.format(
+    telegram_app_group_id=telegram_app_group_id,
     telegram_team_id=telegram_team_id,
     telegram_bundle_id=telegram_bundle_id
 )
@@ -1622,6 +1624,8 @@ plist_fragment(
     <string>en</string>
     <key>CFBundleDisplayName</key>
     <string>AnchorGram</string>
+    <key>AnchorGramAppGroup</key>
+    <string>{telegram_app_group_id}</string>
     <key>CFBundleIdentifier</key>
     <string>{telegram_bundle_id}</string>
     <key>CFBundleName</key>
@@ -1800,6 +1804,7 @@ plist_fragment(
     <true/>
     """.format(
         telegram_bundle_id = telegram_bundle_id,
+        telegram_app_group_id = telegram_app_group_id,
     )
 )
 

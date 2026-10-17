@@ -312,7 +312,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }
         
         let baseAppBundleId = Bundle.main.bundleIdentifier!
-        let appGroupName = "group.\(baseAppBundleId)"
+        let appGroupName = anchorgramAppGroupName(baseAppBundleId: baseAppBundleId)
 
         let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
         configuration.sharedContainerIdentifier = appGroupName
@@ -558,11 +558,23 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
         
         let baseAppBundleId = Bundle.main.bundleIdentifier!
-        let appGroupName = "group.\(baseAppBundleId)"
-        try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: appGroupName, processRole: .mainApp, biometricKeychainService: walletBiometricKeychainService), privateAccessGroup: {
-            BuildConfig.keychainAccessGroup(baseAppBundleId: baseAppBundleId)
-        })
-        let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
+        let appGroupName = anchorgramAppGroupName(baseAppBundleId: baseAppBundleId)
+        let customAppGroup = appGroupName != "group.\(baseAppBundleId)"
+        let privateKeychainGroup = BuildConfig.keychainAccessGroup(baseAppBundleId: baseAppBundleId)
+        do {
+            if customAppGroup && privateKeychainGroup == nil {
+                throw PasscodeError.unavailable
+            }
+            try PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: appGroupName, processRole: .mainApp, biometricKeychainService: walletBiometricKeychainService, keychainAccessGroup: customAppGroup ? privateKeychainGroup : nil), privateAccessGroup: {
+                BuildConfig.keychainAccessGroup(baseAppBundleId: baseAppBundleId)
+            })
+        } catch {
+            let alert = UIAlertController(title: "AnchorGram: signing error", message: "The signing profile does not grant the required Keychain access. Re-sign with the matching profile and bundle identifier.", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            self.mainWindow?.presentNative(alert)
+            return true
+        }
+        let maybeAppGroupUrl = anchorgramContainerURL(appGroupName: appGroupName, baseAppBundleId: baseAppBundleId)
         
         let buildConfig = BuildConfig(baseAppBundleId: baseAppBundleId)
         self.buildConfig = buildConfig
@@ -686,7 +698,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         )
         
         guard let appGroupUrl = maybeAppGroupUrl else {
-            self.mainWindow?.presentNative(UIAlertController(title: nil, message: "Error 2", preferredStyle: .alert))
+            let alert = UIAlertController(title: "AnchorGram: storage unavailable", message: "The signed app cannot open App Group \(appGroupName). Keep this App Group entitlement when signing in ESign.", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            self.mainWindow?.presentNative(alert)
             return true
         }
         
