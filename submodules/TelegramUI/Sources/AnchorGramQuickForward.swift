@@ -5,6 +5,10 @@ import TelegramCore
 import SwiftSignalKit
 import Display
 import AccountContext
+import TelegramPresentationData
+import PresentationDataUtils
+import ChatPresentationInterfaceState
+import TelegramStringFormatting
 
 private final class AnchorQuickStore {
     static let shared = AnchorQuickStore()
@@ -229,7 +233,7 @@ private final class AnchorQuickSend {
             guard let self, self.active else { return }
             guard let controller = self.controller else { self.finish(); return }
             guard let message = message?._asMessage(), let peer, let sourcePeer else { self.fail("Сообщение или группа больше недоступны."); return }
-            guard !message.isCopyProtected(), !self.copyProtected(sourcePeer), self.source.peerId.namespace != Namespaces.Peer.SecretChat,
+            guard !message.isCopyProtected(), !message.containsSecretMedia, !self.copyProtected(sourcePeer), self.source.peerId.namespace != Namespaces.Peer.SecretChat,
                 message.flags.intersection([.Unsent, .Sending, .Failed]).isEmpty else {
                 self.fail("Это сообщение нельзя переслать."); return
             }
