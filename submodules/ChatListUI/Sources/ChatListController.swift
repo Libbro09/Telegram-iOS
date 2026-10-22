@@ -1430,7 +1430,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                     )
                 }
                 
-                var cachedData: Signal<CachedPeerData?, NoError> = .single(nil)
+                var cachedData: Signal<TelegramEngine.EngineData.Item.Peer.CachedData.Result, NoError> = .single(nil)
                 if case let .channel(channel) = peer, channel.isForumOrMonoForum {
                     cachedData = self.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.CachedData(id: peer.id))
                 }
