@@ -5037,6 +5037,11 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             effectivePresentationInterfaceState = effectivePresentationInterfaceState.updatedInterfaceState { $0.withUpdatedEffectiveInputState(textInputPanelNode.inputTextState) }
         }
         
+        if let peerId = self.chatLocation.peerId,
+           self.controller?.anchorgramBlocksEmail(effectivePresentationInterfaceState.interfaceState.effectiveInputState.inputText.string, to: peerId) == true {
+            return
+        }
+
         if let _ = effectivePresentationInterfaceState.interfaceState.editMessage, effectivePresentationInterfaceState.interfaceState.postSuggestionState == nil {
             self.interfaceInteraction?.editMessage()
         } else {

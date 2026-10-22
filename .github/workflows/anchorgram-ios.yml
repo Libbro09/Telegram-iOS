@@ -46,6 +46,7 @@ jobs:
           xcrun swiftc -frontend -parse \
             submodules/TelegramUI/Sources/PreparedChatHistoryViewTransition.swift \
             submodules/TelegramUI/Sources/ChatController.swift \
+            submodules/TelegramUI/Sources/ChatControllerNode.swift \
             submodules/ChatListUI/Sources/ChatListController.swift \
             submodules/TelegramUI/Sources/AppDelegate.swift \
             submodules/TelegramUI/Sources/AnchorGramStorage.swift \
@@ -121,7 +122,7 @@ jobs:
           retention-days: 7
       - name: Validate uploaded IPA
         if: ${{ always() && steps.collect_ipa.outputs.available == 'true' }}
-        run: python3 anchorgram/check_ipa.py build/artifacts/AnchorGram-unsigned.ipa --configuration build-input/anchorgram-configuration.json --expected-version 13.0.2
+        run: python3 anchorgram/check_ipa.py build/artifacts/AnchorGram-unsigned.ipa --configuration build-input/anchorgram-configuration.json --expected-version 13.0.3
       - name: Save compiler cache even after failure
         uses: actions/cache/save@v4
         if: ${{ !cancelled() && inputs.build_ipa && steps.bazel_cache.outcome == 'success' && steps.bazel_cache.outputs.cache-hit != 'true' }}

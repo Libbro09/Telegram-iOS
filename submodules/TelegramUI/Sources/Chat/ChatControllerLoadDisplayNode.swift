@@ -1002,88 +1002,123 @@ extension ChatControllerImpl {
                 return
             }
 
-            var correlationIds: [Int64] = []
-            for message in messages {
-                switch message {
-                case let .message(_, _, _, _, _, _, _, _, correlationId, _):
-                    if let correlationId = correlationId {
-                        correlationIds.append(correlationId)
-                    }
-                default:
-                    break
+            if let peerId = strongSelf.chatLocation.peerId {
+                for message in messages {
+                    if case let .message(text, _, _, _, _, _, _, _, _, _) = message,
+                       strongSelf.anchorgramBlocksEmail(text, to: peerId) { return }
                 }
             }
-            strongSelf.commitPurposefulAction()
-            
-            if let peerId = strongSelf.chatLocation.peerId {
-                var hasDisabledContent = false
-                if "".isEmpty {
-                    hasDisabledContent = false
-                }
-                
-                if let channel = strongSelf.presentationInterfaceState.renderedPeer?.peer as? TelegramChannel, channel.isRestrictedBySlowmode {
-                    let forwardCount = messages.reduce(0, { count, message -> Int in
-                        if case .forward = message {
-                            return count + 1
-                        } else {
-                            return count
+            let send: () -> Void = { [weak self] in
+                guard let strongSelf = self else { return }
+                var correlationIds: [Int64] = []
+                for message in messages {
+                    switch message {
+                    case let .message(_, _, _, _, _, _, _, _, correlationId, _):
+                        if let correlationId = correlationId {
+                            correlationIds.append(correlationId)
                         }
-                    })
-                    
-                    var errorText: String?
-                    if forwardCount > 1 {
-                        errorText = strongSelf.presentationData.strings.Chat_AttachmentMultipleForwardDisabled
-                    } else if isAnyMessageTextPartitioned {
-                        errorText = strongSelf.presentationData.strings.Chat_MultipleTextMessagesDisabled
-                    } else if hasDisabledContent {
-                        errorText = strongSelf.restrictedSendingContentsText()
-                    }
-                    
-                    if let errorText = errorText {
-                        let alertController = textAlertController(
-                            context: strongSelf.context,
-                            title: nil,
-                            text: errorText,
-                            actions: [
-                                TextAlertAction(type: .defaultAction, title: strongSelf.presentationData.strings.Common_OK, action: {})
-                            ]
-                        )
-                        strongSelf.present(alertController, in: .window(.root))
-                        return
+                    default:
+                        break
                     }
                 }
-                
-                let effectiveSilentPosting = silentPosting ?? strongSelf.presentationInterfaceState.interfaceState.silentPosting
-                let transformedMessages = strongSelf.transformEnqueueMessages(messages, silentPosting: effectiveSilentPosting, scheduleTime: scheduleTime, repeatPeriod: repeatPeriod, postpone: postpone)
-                
-                var forwardedMessages: [[EnqueueMessage]] = []
-                var forwardSourcePeerIds = Set<PeerId>()
-                for message in transformedMessages {
-                    if case let .forward(source, _, _, _, _) = message {
-                        forwardSourcePeerIds.insert(source.peerId)
-                        
-                        var added = false
-                        if var last = forwardedMessages.last {
-                            if let currentMessage = last.first, case let .forward(currentSource, _, _, _, _) = currentMessage, currentSource.peerId == source.peerId {
-                                last.append(message)
-                                added = true
+                strongSelf.commitPurposefulAction()
+
+                if let peerId = strongSelf.chatLocation.peerId {
+                    var hasDisabledContent = false
+                    if "".isEmpty {
+                        hasDisabledContent = false
+                    }
+
+                    if let channel = strongSelf.presentationInterfaceState.renderedPeer?.peer as? TelegramChannel, channel.isRestrictedBySlowmode {
+                        let forwardCount = messages.reduce(0, { count, message -> Int in
+                            if case .forward = message {
+                                return count + 1
+                            } else {
+                                return count
+                            }
+                        })
+
+                        var errorText: String?
+                        if forwardCount > 1 {
+                            errorText = strongSelf.presentationData.strings.Chat_AttachmentMultipleForwardDisabled
+                        } else if isAnyMessageTextPartitioned {
+                            errorText = strongSelf.presentationData.strings.Chat_MultipleTextMessagesDisabled
+                        } else if hasDisabledContent {
+                            errorText = strongSelf.restrictedSendingContentsText()
+                        }
+
+                        if let errorText = errorText {
+                            let alertController = textAlertController(
+                                context: strongSelf.context,
+                                title: nil,
+                                text: errorText,
+                                actions: [
+                                    TextAlertAction(type: .defaultAction, title: strongSelf.presentationData.strings.Common_OK, action: {})
+                                ]
+                            )
+                            strongSelf.present(alertController, in: .window(.root))
+                            return
+                        }
+                    }
+
+                    let effectiveSilentPosting = silentPosting ?? strongSelf.presentationInterfaceState.interfaceState.silentPosting
+                    let transformedMessages = strongSelf.transformEnqueueMessages(messages, silentPosting: effectiveSilentPosting, scheduleTime: scheduleTime, repeatPeriod: repeatPeriod, postpone: postpone)
+
+                    var forwardedMessages: [[EnqueueMessage]] = []
+                    var forwardSourcePeerIds = Set<PeerId>()
+                    for message in transformedMessages {
+                        if case let .forward(source, _, _, _, _) = message {
+                            forwardSourcePeerIds.insert(source.peerId)
+
+                            var added = false
+                            if var last = forwardedMessages.last {
+                                if let currentMessage = last.first, case let .forward(currentSource, _, _, _, _) = currentMessage, currentSource.peerId == source.peerId {
+                                    last.append(message)
+                                    added = true
+                                }
+                            }
+                            if !added {
+                                forwardedMessages.append([message])
                             }
                         }
-                        if !added {
-                            forwardedMessages.append([message])
-                        }
                     }
-                }
-                
-                let _ = (strongSelf.shouldDivertMessagesToScheduled(messages: transformedMessages)
-                |> deliverOnMainQueue).start(next: { shouldDivert in
-                    let signal: Signal<[MessageId?], NoError>
-                    var shouldOpenScheduledMessages = false
-                    if forwardSourcePeerIds.count > 1 {
-                        var forwardedMessages = forwardedMessages
-                        if shouldDivert {
-                            forwardedMessages = forwardedMessages.map { messageGroup -> [EnqueueMessage] in
-                                return messageGroup.map { message -> EnqueueMessage in
+
+                    let _ = (strongSelf.shouldDivertMessagesToScheduled(messages: transformedMessages)
+                    |> deliverOnMainQueue).start(next: { shouldDivert in
+                        let signal: Signal<[MessageId?], NoError>
+                        var shouldOpenScheduledMessages = false
+                        if forwardSourcePeerIds.count > 1 {
+                            var forwardedMessages = forwardedMessages
+                            if shouldDivert {
+                                forwardedMessages = forwardedMessages.map { messageGroup -> [EnqueueMessage] in
+                                    return messageGroup.map { message -> EnqueueMessage in
+                                        return message.withUpdatedAttributes { attributes in
+                                            var attributes = attributes
+                                            attributes.removeAll(where: { $0 is OutgoingScheduleInfoMessageAttribute })
+                                            attributes.append(OutgoingScheduleInfoMessageAttribute(scheduleTime: Int32(Date().timeIntervalSince1970) + 10 * 24 * 60 * 60, repeatPeriod: nil))
+                                            return attributes
+                                        }
+                                    }
+                                }
+                                shouldOpenScheduledMessages = true
+                            }
+
+                            var signals: [Signal<[MessageId?], NoError>] = []
+                            for messagesGroup in forwardedMessages {
+                                signals.append(enqueueMessages(account: strongSelf.context.account, peerId: peerId, messages: messagesGroup))
+                            }
+                            signal = combineLatest(signals)
+                            |> map { results in
+                                var ids: [MessageId?] = []
+                                for result in results {
+                                    ids.append(contentsOf: result)
+                                }
+                                return ids
+                            }
+                        } else {
+                            var transformedMessages = transformedMessages
+                            if shouldDivert {
+                                transformedMessages = transformedMessages.map { message -> EnqueueMessage in
                                     return message.withUpdatedAttributes { attributes in
                                         var attributes = attributes
                                         attributes.removeAll(where: { $0 is OutgoingScheduleInfoMessageAttribute })
@@ -1091,100 +1126,82 @@ extension ChatControllerImpl {
                                         return attributes
                                     }
                                 }
+                                shouldOpenScheduledMessages = true
                             }
-                            shouldOpenScheduledMessages = true
+
+                            signal = enqueueMessages(account: strongSelf.context.account, peerId: peerId, messages: transformedMessages)
                         }
-                        
-                        var signals: [Signal<[MessageId?], NoError>] = []
-                        for messagesGroup in forwardedMessages {
-                            signals.append(enqueueMessages(account: strongSelf.context.account, peerId: peerId, messages: messagesGroup))
-                        }
-                        signal = combineLatest(signals)
-                        |> map { results in
-                            var ids: [MessageId?] = []
-                            for result in results {
-                                ids.append(contentsOf: result)
+
+                        let _ = (signal
+                        |> deliverOnMainQueue).startStandalone(next: { messageIds in
+                            guard let strongSelf = self else {
+                                return
                             }
-                            return ids
-                        }
-                    } else {
-                        var transformedMessages = transformedMessages
-                        if shouldDivert {
-                            transformedMessages = transformedMessages.map { message -> EnqueueMessage in
-                                return message.withUpdatedAttributes { attributes in
-                                    var attributes = attributes
-                                    attributes.removeAll(where: { $0 is OutgoingScheduleInfoMessageAttribute })
-                                    attributes.append(OutgoingScheduleInfoMessageAttribute(scheduleTime: Int32(Date().timeIntervalSince1970) + 10 * 24 * 60 * 60, repeatPeriod: nil))
-                                    return attributes
+                            if case .scheduledMessages = strongSelf.presentationInterfaceState.subject {
+                            } else {
+                                if shouldOpenScheduledMessages {
+                                    if let layoutActionOnViewTransitionAction = strongSelf.layoutActionOnViewTransitionAction {
+                                        strongSelf.layoutActionOnViewTransitionAction = nil
+                                        layoutActionOnViewTransitionAction()
+                                    }
                                 }
                             }
-                            shouldOpenScheduledMessages = true
-                        }
-                        
-                        signal = enqueueMessages(account: strongSelf.context.account, peerId: peerId, messages: transformedMessages)
-                    }
-                    
-                    let _ = (signal
-                    |> deliverOnMainQueue).startStandalone(next: { messageIds in
-                        guard let strongSelf = self else {
+                        })
+
+                        donateSendMessageIntent(account: strongSelf.context.account, sharedContext: strongSelf.context.sharedContext, intentContext: .chat, peerIds: [peerId])
+                    })
+                } else if case let .customChatContents(customChatContents) = strongSelf.subject {
+                    switch customChatContents.kind {
+                    case .hashTagSearch:
+                        break
+                    case .quickReplyMessageInput, .welcomeMessages:
+                        customChatContents.enqueueMessages(messages: messages)
+                        strongSelf.chatDisplayNode.historyNode.scrollToEndOfHistory()
+                    case let .businessLinkSetup(link):
+                        if messages.count > 1 {
+                            let alertController = textAlertController(
+                                context: strongSelf.context,
+                                title: nil,
+                                text: strongSelf.presentationData.strings.BusinessLink_AlertTextLimitText,
+                                actions: [
+                                    TextAlertAction(type: .defaultAction, title: strongSelf.presentationData.strings.Common_OK, action: {})
+                                ]
+                            )
+                            strongSelf.present(alertController, in: .window(.root))
                             return
                         }
-                        if case .scheduledMessages = strongSelf.presentationInterfaceState.subject {
-                        } else {
-                            if shouldOpenScheduledMessages {
-                                if let layoutActionOnViewTransitionAction = strongSelf.layoutActionOnViewTransitionAction {
-                                    strongSelf.layoutActionOnViewTransitionAction = nil
-                                    layoutActionOnViewTransitionAction()
+
+                        var text: String = ""
+                        var entities: [MessageTextEntity] = []
+                        if let message = messages.first {
+                            if case let .message(textValue, attributes, _, _, _, _, _, _, _, _) = message {
+                                text = textValue
+                                for attribute in attributes {
+                                    if let attribute = attribute as? TextEntitiesMessageAttribute {
+                                        entities = attribute.entities
+                                    }
                                 }
                             }
                         }
-                    })
-                    
-                    donateSendMessageIntent(account: strongSelf.context.account, sharedContext: strongSelf.context.sharedContext, intentContext: .chat, peerIds: [peerId])
-                })
-            } else if case let .customChatContents(customChatContents) = strongSelf.subject {
-                switch customChatContents.kind {
-                case .hashTagSearch:
-                    break
-                case .quickReplyMessageInput, .welcomeMessages:
-                    customChatContents.enqueueMessages(messages: messages)
-                    strongSelf.chatDisplayNode.historyNode.scrollToEndOfHistory()
-                case let .businessLinkSetup(link):
-                    if messages.count > 1 {
-                        let alertController = textAlertController(
-                            context: strongSelf.context,
-                            title: nil,
-                            text: strongSelf.presentationData.strings.BusinessLink_AlertTextLimitText,
-                            actions: [
-                                TextAlertAction(type: .defaultAction, title: strongSelf.presentationData.strings.Common_OK, action: {})
-                            ]
-                        )
-                        strongSelf.present(alertController, in: .window(.root))
-                        return
-                    }
-                    
-                    var text: String = ""
-                    var entities: [MessageTextEntity] = []
-                    if let message = messages.first {
-                        if case let .message(textValue, attributes, _, _, _, _, _, _, _, _) = message {
-                            text = textValue
-                            for attribute in attributes {
-                                if let attribute = attribute as? TextEntitiesMessageAttribute {
-                                    entities = attribute.entities
-                                }
-                            }
+
+                        let _ = strongSelf.context.engine.accountData.editBusinessChatLink(url: link.url, message: text, entities: entities, title: link.title).start()
+                        if case let .customChatContents(customChatContents) = strongSelf.subject {
+                            customChatContents.businessLinkUpdate(message: text, entities: entities, title: link.title)
                         }
+
+                        strongSelf.present(UndoOverlayController(presentationData: strongSelf.presentationData, content: .succeed(text: strongSelf.presentationData.strings.Business_Links_EditLinkToastSaved, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
                     }
-                    
-                    let _ = strongSelf.context.engine.accountData.editBusinessChatLink(url: link.url, message: text, entities: entities, title: link.title).start()
-                    if case let .customChatContents(customChatContents) = strongSelf.subject {
-                        customChatContents.businessLinkUpdate(message: text, entities: entities, title: link.title)
-                    }
-                    
-                    strongSelf.present(UndoOverlayController(presentationData: strongSelf.presentationData, content: .succeed(text: strongSelf.presentationData.strings.Business_Links_EditLinkToastSaved, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
                 }
+                strongSelf.updateChatPresentationInterfaceState(interactive: true, { $0.updatedShowCommands(false) })
             }
-            strongSelf.updateChatPresentationInterfaceState(interactive: true, { $0.updatedShowCommands(false) })
+            if let peerId = strongSelf.chatLocation.peerId {
+                let sourceIds: [MessageId] = messages.compactMap { message in
+                    if case let .forward(source, _, _, _, _) = message { return source }
+                    return nil
+                }
+                if strongSelf.anchorgramCheckForwardedEmails(sourceIds, to: peerId, completion: send) { return }
+            }
+            send()
         }
         
         if case let .customChatContents(customChatContents) = self.subject {
