@@ -9114,7 +9114,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         return .single(false)
     }
     
-    func sendMessages(_ messages: [EnqueueMessage], media: Bool = false, postpone: Bool = false, commit: Bool = false, anchorgramEmailChecked: Bool = false) {
+    func sendMessages(_ messages: [EnqueueMessage], media: Bool = false, postpone: Bool = false, commit: Bool = false) {
+        self.anchorgramSendMessages(messages, media: media, postpone: postpone, commit: commit, anchorgramEmailChecked: false)
+    }
+
+    private func anchorgramSendMessages(_ messages: [EnqueueMessage], media: Bool, postpone: Bool, commit: Bool, anchorgramEmailChecked: Bool) {
         if case let .customChatContents(customChatContents) = self.subject {
             customChatContents.enqueueMessages(messages: messages)
             return
@@ -9135,7 +9139,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 return nil
             }
             if self.anchorgramCheckForwardedEmails(sourceIds, to: peerId, completion: { [weak self] in
-                self?.sendMessages(messages, media: media, postpone: postpone, commit: commit, anchorgramEmailChecked: true)
+                self?.anchorgramSendMessages(messages, media: media, postpone: postpone, commit: commit, anchorgramEmailChecked: true)
             }) { return }
         }
 
