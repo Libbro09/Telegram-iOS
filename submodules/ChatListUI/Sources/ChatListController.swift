@@ -63,6 +63,11 @@ import AlertComponent
 import AlertHeaderComponent
 import AvatarComponent
 
+private final class AnchorGramChatOpenAttempt {
+    var stage = "Обработка нажатия"
+    var completed = false
+}
+
 private final class ContextControllerContentSourceImpl: ContextControllerContentSource {
     let controller: ViewController
     weak var sourceNode: ASDisplayNode?
@@ -93,6 +98,7 @@ private final class ContextControllerContentSourceImpl: ContextControllerContent
 }
 
 public class ChatListControllerImpl: TelegramBaseController, ChatListController {
+    private var anchorgramOpenGeneration = 0
     private var validLayout: ContainerViewLayout?
     
     public let context: AccountContext
@@ -1401,6 +1407,20 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                     return
                 }
                 
+                self.anchorgramOpenGeneration += 1
+                let generation = self.anchorgramOpenGeneration
+                let attempt = AnchorGramChatOpenAttempt()
+                Queue.mainQueue().after(8.0) { [weak self, weak attempt] in
+                    guard let self, let attempt, !attempt.completed,
+                          self.anchorgramOpenGeneration == generation,
+                          self.isViewLoaded, self.view.window != nil,
+                          UIApplication.shared.applicationState == .active else { return }
+                    attempt.completed = true
+                    NSLog("AnchorGram 13.0.2: chat open stalled at %@", attempt.stage)
+                    self.present(textAlertController(context: self.context, title: "AnchorGram: переход в чат",
+                        text: "Чат не открылся за 8 секунд. Этап: " + attempt.stage + ". Версия 13.0.2. Повтори нажатие; если проблема остаётся, сообщи этот этап.",
+                        actions: [TextAlertAction(type: .defaultAction, title: self.presentationData.strings.Common_OK, action: {})]), in: .window(.root))
+                }
                 let subject: ChatControllerSubject? = nil
                 
                 var forumSourcePeer: Signal<EnginePeer?, NoError> = .single(nil)
@@ -1410,17 +1430,35 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                     )
                 }
                 
-                let _ = (combineLatest(queue: .mainQueue(),
-                    self.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.CachedData(id: peer.id)),
-                    forumSourcePeer
-                )
-                |> deliverOnMainQueue).start(next: { [weak self] cachedPeerData, forumSourcePeer in
+                var cachedData: Signal<CachedPeerData?, NoError> = .single(nil)
+                if case let .channel(channel) = peer, channel.isForumOrMonoForum {
+                    cachedData = self.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.CachedData(id: peer.id))
+                }
+                attempt.stage = "Чтение данных чата"
+                let _ = (combineLatest(queue: .mainQueue(), cachedData, forumSourcePeer)
+                |> take(1)
+                |> deliverOnMainQueue).startStandalone(next: { [weak self] cachedPeerData, forumSourcePeer in
                     guard let self else {
                         return
                     }
-                    guard let navigationController = self.navigationController as? NavigationController else {
+                    guard self.anchorgramOpenGeneration == generation else { return }
+                    attempt.stage = "Поиск навигационного контроллера"
+                    var resolvedNavigation = self.navigationController as? NavigationController
+                    var owner = self.parent
+                    var depth = 0
+                    while resolvedNavigation == nil, let current = owner, depth < 16 {
+                        resolvedNavigation = (current as? NavigationController) ?? (current.navigationController as? NavigationController)
+                        owner = current.parent
+                        depth += 1
+                    }
+                    guard let navigationController = resolvedNavigation else {
+                        attempt.completed = true
+                        self.present(textAlertController(context: self.context, title: "AnchorGram: навигация",
+                            text: "Не найден контроллер перехода в чат (AG-NAV, 13.0.2). Вернись в список чатов и повтори.",
+                            actions: [TextAlertAction(type: .defaultAction, title: self.presentationData.strings.Common_OK, action: {})]), in: .window(.root))
                         return
                     }
+                    attempt.stage = "Открытие истории сообщений"
                     
                     var peer = peer
                     var threadId = threadId
@@ -1430,6 +1468,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                     }
                     
                     if case .community = peer {
+                        attempt.completed = true
                         self.openCommunityView(communityId: peer.id)
                         self.chatListDisplayNode.mainContainerNode.currentItemNode.clearHighlightAnimated(true)
                         return
@@ -1453,6 +1492,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                     }
                     
                     if openAsInlineForum, case let .channel(channel) = peer, channel.isForum, threadId == nil {
+                        attempt.completed = true
                         self.chatListDisplayNode.clearHighlightAnimated(true)
                         if self.chatListDisplayNode.inlineStackContainerNode?.location == .forum(peerId: channel.id) {
                             self.setInlineChatList(location: nil)
@@ -1482,7 +1522,9 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                                 isNotAvailable: false
                             )),
                             subject: subject,
-                            keepStack: .always
+                            keepStack: .always,
+                            completion: { _ in attempt.completed = true },
+                            chatListCompletion: { _ in attempt.completed = true }
                         ))
                         
                         self.chatListDisplayNode.clearHighlightAnimated(true)
@@ -1510,6 +1552,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                             options: navigationAnimationOptions,
                             parentGroupId: groupId._asGroup(),
                             chatListFilter: self.chatListDisplayNode.mainContainerNode.currentItemNode.chatListFilter?.id, completion: { [weak self] controller in
+                                attempt.completed = true
                                 guard let self else {
                                     return
                                 }
@@ -1549,7 +1592,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                                         })
                                     }
                                 }
-                            }))
+                            }, chatListCompletion: { _ in attempt.completed = true }))
                     }
                 })
             }

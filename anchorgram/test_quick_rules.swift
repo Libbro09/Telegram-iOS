@@ -23,6 +23,24 @@ struct QuickRulesTests {
         let target = AnchorQuickTarget(id: "button", label: "Группа", destination: "Группа", peer: 123, thread: 456, requestsOnly: true)
         let decoded = try JSONDecoder().decode(AnchorQuickTarget.self, from: JSONEncoder().encode(target))
         precondition(decoded == target)
+        let legacy = Data(#"{"id":"old","label":"Group","destination":"Group","peer":123,"requestsOnly":true}"#.utf8)
+        let legacyDecoded = try JSONDecoder().decode(AnchorQuickTarget.self, from: legacy)
+        precondition(!legacyDecoded.saveOriginal)
+        var combined = target
+        combined.saveOriginal = true
+        let combinedDecoded = try JSONDecoder().decode(AnchorQuickTarget.self, from: JSONEncoder().encode(combined))
+        precondition(combinedDecoded == combined)
+        precondition(AnchorQuickRules.paymentCaption("Email: private@example.com") == "Без заявок")
+        precondition(AnchorQuickRules.paymentCaption("Последние заявки:\n") == "Без заявок")
+        precondition(AnchorQuickRules.paymentCaption("Последние заявки:\nwrong row") == nil)
+        precondition(AnchorQuickRules.paymentCaption(source) == caption)
+        precondition(AnchorQuickRules.paymentCaption(String(repeating: "x", count: 262145)) == nil)
+        for text in ["x@example.com", "имя@почта.рф", #""a b"@example.com"#, "a@[127.0.0.1]"] {
+            precondition(AnchorQuickRules.containsEmail(text))
+        }
+        precondition(!AnchorQuickRules.containsEmail("@username"))
+        precondition(!AnchorQuickRules.containsEmail("Без заявок"))
+        precondition(!AnchorQuickRules.containsEmail(caption))
         print("Quick forwarding parser and configuration tests passed.")
     }
 

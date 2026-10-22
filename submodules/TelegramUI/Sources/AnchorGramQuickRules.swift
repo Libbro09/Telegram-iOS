@@ -7,6 +7,24 @@ struct AnchorQuickTarget: Codable, Equatable {
     var peer: Int64
     var thread: Int64?
     var requestsOnly: Bool
+    var saveOriginal: Bool = false
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, destination, peer, thread, requestsOnly, saveOriginal
+    }
+}
+
+extension AnchorQuickTarget {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.label = try c.decode(String.self, forKey: .label)
+        self.destination = try c.decode(String.self, forKey: .destination)
+        self.peer = try c.decode(Int64.self, forKey: .peer)
+        self.thread = try c.decodeIfPresent(Int64.self, forKey: .thread)
+        self.requestsOnly = try c.decode(Bool.self, forKey: .requestsOnly)
+        self.saveOriginal = try c.decodeIfPresent(Bool.self, forKey: .saveOriginal) ?? false
+    }
 }
 
 enum AnchorQuickRules {
@@ -41,10 +59,23 @@ enum AnchorQuickRules {
         return result
     }
 
-    static func latestRequests(_ text: String) -> String? {
+    private static let email = try! NSRegularExpression(pattern: #"(?:[\p{L}\p{N}_!#$%&'*+/=?^`{|}~.\-]+|"[^"\r\n]+")@(?:[\p{L}\p{N}\-]+(?:\.[\p{L}\p{N}\-]+)*|\[[^\]\s]+\])"#, options: .caseInsensitive)
+
+    static func containsEmail(_ text: String) -> Bool {
+        guard text.contains("@") else { return false }
+        let text = normalized(text)
+        return email.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+    }
+
+    static func paymentCaption(_ text: String) -> String? {
+        return latestRequests(text, allowEmpty: true)
+    }
+
+    static func latestRequests(_ text: String, allowEmpty: Bool = false) -> String? {
         guard text.utf8.count <= 262144 else { return nil }
         let lines = normalized(text).components(separatedBy: "\n")
-        guard lines.count <= 2000, let start = lines.firstIndex(where: { matches(header, $0) }) else { return nil }
+        guard lines.count <= 2000 else { return nil }
+        guard let start = lines.firstIndex(where: { matches(header, $0) }) else { return allowEmpty ? "Без заявок" : nil }
         var result: [String] = []
         var acceptsDollars = false
         for raw in lines.dropFirst(start + 1) {
@@ -63,7 +94,8 @@ enum AnchorQuickRules {
             if result.count > 40 { return nil }
         }
         let caption = result.joined(separator: "\n")
-        guard !caption.isEmpty, caption.utf16.count <= 1024 else { return nil }
+        if caption.isEmpty { return allowEmpty ? "Без заявок" : nil }
+        guard caption.utf16.count <= 1024 else { return nil }
         return caption
     }
 

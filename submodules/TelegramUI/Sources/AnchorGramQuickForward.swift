@@ -48,6 +48,32 @@ private final class AnchorQuickStore {
 }
 
 extension ChatControllerImpl {
+    func anchorgramBlocksEmail(_ text: String, to peerId: PeerId) -> Bool {
+        let restricted = AnchorQuickStore.shared.targets(self.context.account.peerId.toInt64()).contains { $0.peer == peerId.toInt64() && $0.requestsOnly }
+        if restricted && AnchorQuickRules.containsEmail(text) {
+            self.anchorgramToast("Email в этой платёжке запрещён. Удали адрес из сообщения.")
+            return true
+        }
+        return false
+    }
+
+    func anchorgramCheckForwardedEmails(_ ids: [MessageId], to peerId: PeerId, completion: @escaping () -> Void) -> Bool {
+        let restricted = AnchorQuickStore.shared.targets(self.context.account.peerId.toInt64()).contains { $0.peer == peerId.toInt64() && $0.requestsOnly }
+        guard restricted, !ids.isEmpty else { return false }
+        let _ = (self.context.account.postbox.transaction { transaction -> Bool? in
+            for id in ids {
+                guard let message = transaction.getMessage(id) else { return nil }
+                if AnchorQuickRules.containsEmail(message.text) { return false }
+            }
+            return true
+        } |> deliverOnMainQueue).startStandalone(next: { [weak self] allowed in
+            guard let self, self.chatLocation.peerId == peerId else { return }
+            if allowed == true { completion() }
+            else { self.anchorgramToast(allowed == false ? "Email в этой платёжке запрещён. Пересылка отменена." : "Не удалось проверить пересылку. Ничего не отправлено.") }
+        })
+        return true
+    }
+
     func anchorgramQuickSaved(_ message: EngineRawMessage) {
         let target = AnchorQuickTarget(id: "__saved", label: "Избранное", destination: "Избранное", peer: self.context.account.peerId.toInt64(), thread: nil, requestsOnly: false)
         self.anchorgramQuickSend(message.id, target: target)
@@ -58,7 +84,7 @@ extension ChatControllerImpl {
         let alert = UIAlertController(title: "Быстрая отправка", message: "Выбери, куда отправить это сообщение", preferredStyle: .actionSheet)
         alert.addAction(UIAlertAction(title: "В Избранное · оригинал", style: .default, handler: { [weak self] _ in self?.anchorgramQuickSaved(message) }))
         for target in AnchorQuickStore.shared.targets(account) {
-            let mode = target.requestsOnly ? "фото + заявки" : "оригинал"
+            let mode = (target.saveOriginal ? "Избранное + " : "") + (target.requestsOnly ? "фото + заявки" : "оригинал")
             alert.addAction(UIAlertAction(title: target.label + " · " + mode, style: .default, handler: { [weak self] _ in
                 self?.anchorgramQuickSend(message.id, target: target)
             }))
@@ -92,12 +118,16 @@ extension ChatControllerImpl {
                 self.anchorgramToast("Для форума выбери конкретную тему."); return
             }
             let destination = String(peer.displayTitle(strings: self.presentationData.strings, displayOrder: self.presentationData.nameDisplayOrder).prefix(200))
-            let target = AnchorQuickTarget(id: existing?.id ?? UUID().uuidString, label: existing?.label ?? String(destination.prefix(64)), destination: destination + (thread == nil ? "" : " · тема \(thread!)"), peer: peer.id.toInt64(), thread: thread, requestsOnly: existing?.requestsOnly ?? true)
+            let target = AnchorQuickTarget(id: existing?.id ?? UUID().uuidString, label: existing?.label ?? String(destination.prefix(64)), destination: destination + (thread == nil ? "" : " · тема \(thread!)"), peer: peer.id.toInt64(), thread: thread, requestsOnly: existing?.requestsOnly ?? true, saveOriginal: existing?.saveOriginal ?? false)
             picker?.dismiss()
             self.anchorgramQuickEdit(target)
         }
         self.chatDisplayNode.dismissInput()
-        self.effectiveNavigationController?.pushViewController(picker)
+        guard let navigation = self.effectiveNavigationController else {
+            self.anchorgramToast("Не удалось открыть выбор группы. Вернись к списку чатов и открой чат заново.")
+            return
+        }
+        navigation.pushViewController(picker)
     }
 
     private func anchorgramQuickEdit(_ target: AnchorQuickTarget) {
@@ -120,6 +150,13 @@ extension ChatControllerImpl {
                 self.anchorgramToast("Кнопка сохранена")
             }))
         }
+        alert.addAction(UIAlertAction(title: target.saveOriginal ? "Избранное: включено → выключить" : "Избранное: выключено → включить", style: .default, handler: { [weak self, weak alert] _ in
+            var updated = target
+            updated.saveOriginal.toggle()
+            let label = String((alert?.textFields?.first?.text ?? target.label).trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
+            if !label.isEmpty { updated.label = label }
+            self?.anchorgramQuickEdit(updated)
+        }))
         alert.addAction(UIAlertAction(title: "Выбрать другую группу…", style: .default, handler: { [weak self] _ in self?.anchorgramQuickChooseGroup(existing: target) }))
         if AnchorQuickStore.shared.targets(account).contains(where: { $0.id == target.id }) {
             alert.addAction(UIAlertAction(title: "Удалить кнопку", style: .destructive, handler: { [weak self] _ in
@@ -142,14 +179,20 @@ extension ChatControllerImpl {
         operation.start()
     }
 
-    fileprivate func anchorgramPresent(_ alert: UIAlertController) {
+    fileprivate func anchorgramPresent(_ alert: UIAlertController, onFailure: (() -> Void)? = nil) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self, self.isViewLoaded, self.view.window != nil else { return }
-            if let popover = alert.popoverPresentationController {
-                popover.sourceView = self.view
-                popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 1, height: 1)
+            guard let self, self.isViewLoaded, let window = self.view.window,
+                  var presenter = window.rootViewController else { onFailure?(); return }
+            while let next = presenter.presentedViewController {
+                guard !next.isBeingDismissed else { onFailure?(); return }
+                presenter = next
             }
-            self.present(alert, animated: true)
+            guard !(presenter is UIAlertController), !presenter.isBeingDismissed else { onFailure?(); return }
+            if let popover = alert.popoverPresentationController {
+                popover.sourceView = presenter.view
+                popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+            }
+            presenter.present(alert, animated: true)
         }
     }
 
@@ -244,16 +287,21 @@ private final class AnchorQuickSend {
                 self.fail("Исходное сообщение изменилось. Повтори отправку."); return
             }
             if self.target.requestsOnly {
-                guard let caption = AnchorQuickRules.latestRequests(message.text),
+                guard let caption = AnchorQuickRules.paymentCaption(message.text),
                     let photo = message.media.compactMap({ $0 as? TelegramMediaImage }).first,
                     message.groupingKey == nil else {
-                    self.fail("Нужны одно фото и распознаваемый блок «Последние заявки». Ничего не отправлено."); return
+                    self.fail("Нужно одно фото; непустой блок заявок должен быть распознаваемым. Ничего не отправлено."); return
                 }
                 self.payload = .message(text: caption, attributes: [], inlineStickers: [:], mediaReference: .message(message: MessageReference(message), media: photo), threadId: self.target.thread, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
                 self.ids = AnchorQuickRules.requestIds(caption)
             } else {
                 self.payload = .forward(source: message.id, threadId: self.target.thread, grouping: .auto, attributes: [], correlationId: nil)
                 self.ids = AnchorQuickRules.requestIds(message.text)
+            }
+            let restricted = AnchorQuickStore.shared.targets(controller.context.account.peerId.toInt64()).contains { $0.peer == self.target.peer && $0.requestsOnly }
+            let outgoingText = self.target.requestsOnly ? AnchorQuickRules.paymentCaption(message.text) ?? "" : message.text
+            if restricted && AnchorQuickRules.containsEmail(outgoingText) {
+                self.fail("Email в этой платёжке запрещён. Подтверждение не отменяет запрет."); return
             }
             guard self.ids.count <= 20 else { self.fail("Слишком много заявок для быстрой проверки. Ничего не отправлено."); return }
             self.snapshot = message
@@ -313,7 +361,7 @@ private final class AnchorQuickSend {
         guard let controller = self.controller else { self.finish(); return }
         self.armTimeout(120)
         let detail = pending ? "Недавно добавлены в отправку с этого телефона:" : "В группе уже найдены заявки — у тебя или коллег:"
-        let preview = self.target.requestsOnly ? AnchorQuickRules.latestRequests(self.snapshot?.text ?? "") ?? "" : self.snapshot?.text ?? ""
+        let preview = self.target.requestsOnly ? AnchorQuickRules.paymentCaption(self.snapshot?.text ?? "") ?? "" : self.snapshot?.text ?? ""
         let alert = UIAlertController(title: "Возможный дубль", message: self.target.destination + "\n\n" + detail + "\n" + ids.prefix(4).joined(separator: "\n") + "\n\n" + String(preview.prefix(240)) + "\n\nЕсли чек другой, можно отправить повторно.", preferredStyle: .alert)
         let cancel = UIAlertAction(title: "Отмена", style: .cancel, handler: { [weak self] _ in self?.finish() })
         alert.addAction(cancel)
@@ -325,21 +373,46 @@ private final class AnchorQuickSend {
         }))
         alert.preferredAction = cancel
         self.confirmation = alert
-        controller.anchorgramPresent(alert)
+        controller.anchorgramPresent(alert, onFailure: { [weak self] in
+            self?.fail("Не удалось показать подтверждение. Ничего не отправлено.")
+        })
     }
 
     private func enqueue() {
         guard self.active, let controller = self.controller, let payload = self.payload else { self.finish(); return }
         guard self.configured(controller) else { self.fail("Кнопка изменилась. Повтори отправку."); return }
-        self.enqueuing = true
-        self.disposable.set((enqueueMessages(account: controller.context.account, peerId: PeerId(self.target.peer), messages: [payload])
-        |> deliverOnMainQueue).start(next: { [weak self] messages in
+        let account = controller.context.account
+        let accountId = account.peerId.toInt64()
+        let sendDestination: () -> Void = { [weak self] in
             guard let self, self.active else { return }
-            guard messages.count == 1, messages.first! != nil else { self.fail("Не удалось добавить сообщение в отправку."); return }
-            AnchorQuickStore.shared.remember(self.ids, key: self.key)
-            self.controller?.anchorgramToast("Добавлено в отправку: " + self.target.label)
-            self.finish()
-        }))
+            guard self.target.id == "__saved" || AnchorQuickStore.shared.targets(accountId).contains(self.target) else {
+                self.fail("Настройка изменилась. Проверь Избранное перед повтором."); return
+            }
+            self.disposable.set((enqueueMessages(account: account, peerId: PeerId(self.target.peer), messages: [payload])
+            |> deliverOnMainQueue).start(next: { [weak self] messages in
+                guard let self, self.active else { return }
+                guard messages.count == 1, messages.first! != nil else {
+                    self.fail(self.target.saveOriginal ? "Платёжка не добавлена в очередь. Оригинал мог сохраниться в Избранном — проверь перед повтором." : "Не удалось добавить сообщение в отправку."); return
+                }
+                AnchorQuickStore.shared.remember(self.ids, key: self.key)
+                self.controller?.anchorgramToast(self.target.saveOriginal ? "В очереди: оригинал → Избранное, чек → " + self.target.label : "Добавлено в отправку: " + self.target.label)
+                self.finish()
+            }))
+        }
+        self.enqueuing = true
+        if self.target.saveOriginal && PeerId(self.target.peer) != account.peerId {
+            let archive = EnqueueMessage.forward(source: self.source, threadId: nil, grouping: .auto, attributes: [], correlationId: nil)
+            self.disposable.set((enqueueMessages(account: account, peerId: account.peerId, messages: [archive])
+            |> deliverOnMainQueue).start(next: { [weak self] messages in
+                guard let self, self.active else { return }
+                guard messages.count == 1, messages.first! != nil else {
+                    self.fail("Не удалось сохранить оригинал в очередь Избранного. В платёжку ничего не отправлено."); return
+                }
+                sendDestination()
+            }))
+        } else {
+            sendDestination()
+        }
     }
 
     private func fail(_ message: String) { self.controller?.anchorgramToast(message); self.finish() }
