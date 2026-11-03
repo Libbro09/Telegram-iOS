@@ -22,7 +22,8 @@ class BuildConfiguration:
         premium_iap_product_id,
         enable_siri,
         enable_icloud,
-        app_group_id=None
+        app_group_id=None,
+        aps_environment=None
     ):
         self.bundle_id = bundle_id
         self.api_id = api_id
@@ -37,8 +38,13 @@ class BuildConfiguration:
         self.enable_siri = enable_siri
         self.enable_icloud = enable_icloud
         self.app_group_id = app_group_id or 'group.' + bundle_id
+        if aps_environment not in (None, '', 'development', 'production'):
+            raise ValueError('Invalid APNs environment')
+        self.aps_environment = aps_environment
 
     def write_to_variables_file(self, bazel_path, use_xcode_managed_codesigning, aps_environment, path):
+        if use_xcode_managed_codesigning and self.aps_environment is not None:
+            aps_environment = self.aps_environment
         string = ''
         string += 'telegram_bazel_path = "{}"\n'.format(bazel_path)
         string += 'telegram_use_xcode_managed_codesigning = {}\n'.format('True' if use_xcode_managed_codesigning else 'False')
@@ -100,7 +106,8 @@ def build_configuration_from_json(path):
             premium_iap_product_id=configuration_dict['premium_iap_product_id'],
             enable_siri=configuration_dict['enable_siri'],
             enable_icloud=configuration_dict['enable_icloud'],
-            app_group_id=configuration_dict.get('app_group_id')
+            app_group_id=configuration_dict.get('app_group_id'),
+            aps_environment=configuration_dict.get('aps_environment')
         )
 
 

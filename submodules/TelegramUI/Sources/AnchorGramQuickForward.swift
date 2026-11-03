@@ -89,7 +89,7 @@ extension ChatControllerImpl {
                 self?.anchorgramQuickSend(message.id, target: target)
             }))
         }
-        alert.addAction(UIAlertAction(title: "Добавить группу…", style: .default, handler: { [weak self] _ in self?.anchorgramQuickChooseGroup(existing: nil) }))
+        alert.addAction(UIAlertAction(title: "Добавить группу или бота…", style: .default, handler: { [weak self] _ in self?.anchorgramQuickChooseGroup(existing: nil) }))
         alert.addAction(UIAlertAction(title: "Редактировать кнопки…", style: .default, handler: { [weak self] _ in self?.anchorgramQuickManage() }))
         alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
         self.anchorgramPresent(alert)
@@ -111,20 +111,32 @@ extension ChatControllerImpl {
         if existing == nil && AnchorQuickStore.shared.targets(account).count >= 20 {
             self.anchorgramToast("Можно сохранить не больше 20 кнопок."); return
         }
-        let picker = self.context.sharedContext.makePeerSelectionController(PeerSelectionControllerParams(context: self.context, updatedPresentationData: self.updatedPresentationData, filter: [.onlyGroupsAndChannels, .excludeChannels, .onlyWriteable, .excludeDisabled, .doNotSearchMessages], multipleSelection: false, selectForumThreads: true))
+        let picker = self.context.sharedContext.makePeerSelectionController(PeerSelectionControllerParams(context: self.context, updatedPresentationData: self.updatedPresentationData, filter: [.excludeUsers, .excludeSecretChats, .excludeChannels, .onlyWriteable, .excludeDisabled, .doNotSearchMessages], multipleSelection: false, selectForumThreads: true))
         picker.peerSelected = { [weak self, weak picker] peer, thread in
             guard let self else { return }
+            let isBot: Bool
+            switch peer {
+            case let .user(user):
+                guard user.botInfo != nil else {
+                    self.anchorgramToast("Выбери группу, тему группы или бота."); return
+                }
+                isBot = true
+            case .legacyGroup, .channel:
+                isBot = false
+            default:
+                self.anchorgramToast("Выбери группу, тему группы или бота."); return
+            }
             if case let .channel(channel) = peer, channel.flags.contains(.isForum), thread == nil {
                 self.anchorgramToast("Для форума выбери конкретную тему."); return
             }
             let destination = String(peer.displayTitle(strings: self.presentationData.strings, displayOrder: self.presentationData.nameDisplayOrder).prefix(200))
-            let target = AnchorQuickTarget(id: existing?.id ?? UUID().uuidString, label: existing?.label ?? String(destination.prefix(64)), destination: destination + (thread == nil ? "" : " · тема \(thread!)"), peer: peer.id.toInt64(), thread: thread, requestsOnly: existing?.requestsOnly ?? true, saveOriginal: existing?.saveOriginal ?? false)
+            let target = AnchorQuickTarget(id: existing?.id ?? UUID().uuidString, label: existing?.label ?? String(destination.prefix(64)), destination: destination + (thread == nil ? "" : " · тема \(thread!)"), peer: peer.id.toInt64(), thread: thread, requestsOnly: existing?.requestsOnly ?? !isBot, saveOriginal: existing?.saveOriginal ?? false)
             picker?.dismiss()
             self.anchorgramQuickEdit(target)
         }
         self.chatDisplayNode.dismissInput()
         guard let navigation = self.effectiveNavigationController else {
-            self.anchorgramToast("Не удалось открыть выбор группы. Вернись к списку чатов и открой чат заново.")
+            self.anchorgramToast("Не удалось открыть выбор получателя. Вернись к списку чатов и открой чат заново.")
             return
         }
         navigation.pushViewController(picker)
@@ -157,7 +169,7 @@ extension ChatControllerImpl {
             if !label.isEmpty { updated.label = label }
             self?.anchorgramQuickEdit(updated)
         }))
-        alert.addAction(UIAlertAction(title: "Выбрать другую группу…", style: .default, handler: { [weak self] _ in self?.anchorgramQuickChooseGroup(existing: target) }))
+        alert.addAction(UIAlertAction(title: "Выбрать получателя…", style: .default, handler: { [weak self] _ in self?.anchorgramQuickChooseGroup(existing: target) }))
         if AnchorQuickStore.shared.targets(account).contains(where: { $0.id == target.id }) {
             alert.addAction(UIAlertAction(title: "Удалить кнопку", style: .destructive, handler: { [weak self] _ in
                 AnchorQuickStore.shared.save(AnchorQuickStore.shared.targets(account).filter { $0.id != target.id }, account: account)

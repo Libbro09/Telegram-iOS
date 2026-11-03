@@ -613,7 +613,7 @@ genrule(
 <plist version="1.0">
 <dict>
     <key>CFBundleShortVersionString</key>
-    <string>$$version.3</string>
+    <string>$$version.4</string>
 </dict>
 </plist>
 PLIST
