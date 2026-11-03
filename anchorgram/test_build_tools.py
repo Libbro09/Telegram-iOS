@@ -66,19 +66,9 @@ class BuildToolsTests(unittest.TestCase):
                 resolved.write_to_variables_file('/test/bazel', True, '', str(variables))
                 self.assertIn('telegram_app_group_id = "group.example.1"', variables.read_text(encoding='utf-8'))
                 self.assertIn('telegram_bundle_id = "app.example.anchorgram"', variables.read_text(encoding='utf-8'))
-                self.assertIn('telegram_aps_environment = "production"', variables.read_text(encoding='utf-8'))
-                resolved.write_to_variables_file('/test/bazel', False, 'development', str(variables))
-                self.assertIn('telegram_aps_environment = "development"', variables.read_text(encoding='utf-8'))
-                legacy = dict(config)
-                legacy.pop('aps_environment')
-                config_path = root / 'build-input/legacy.json'
-                config_path.write_text(json.dumps(legacy), encoding='utf-8')
-                build_configuration_from_json(str(config_path)).write_to_variables_file('/test/bazel', True, '', str(variables))
-                self.assertIn('telegram_aps_environment = ""', variables.read_text(encoding='utf-8'))
-
             finally:
                 sys.path.pop(0)
-            for key, value in [('ANCHORGRAM_BUNDLE_ID', 'app.*'), ('APPLE_APP_GROUP', 'not-a-group'), ('ANCHORGRAM_APS_ENVIRONMENT', 'invalid')]:
+            for key, value in [('ANCHORGRAM_BUNDLE_ID', 'app.*'), ('APPLE_APP_GROUP', 'not-a-group')]:
                 with self.assertRaises(ValueError):
                     prepare(root, dict(env, **{key: value}))
 

@@ -21,15 +21,10 @@ def prepare(root: Path, env) -> None:
     if not re.fullmatch(r'group\.[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)+', app_group_id):
         raise ValueError('Invalid APPLE_APP_GROUP')
 
-    aps_environment = env.get('ANCHORGRAM_APS_ENVIRONMENT', 'production').strip()
-    if aps_environment not in ('production', 'development', ''):
-        raise ValueError('Invalid ANCHORGRAM_APS_ENVIRONMENT')
-
     config = json.loads((root / 'build-system/template_minimal_development_configuration.json').read_text(encoding='utf-8'))
     config.update({
         'bundle_id': bundle_id,
         'app_group_id': app_group_id,
-        'aps_environment': aps_environment,
         'api_id': api_id,
         'api_hash': api_hash,
         'team_id': team_id,
