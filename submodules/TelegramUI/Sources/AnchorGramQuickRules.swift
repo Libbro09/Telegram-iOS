@@ -77,21 +77,26 @@ enum AnchorQuickRules {
         guard lines.count <= 2000 else { return nil }
         guard let start = lines.firstIndex(where: { matches(header, $0) }) else { return allowEmpty ? "Без заявок" : nil }
         var result: [String] = []
+        var hasFirstRequest = false
         var acceptsDollars = false
         for raw in lines.dropFirst(start + 1) {
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             if line.isEmpty { continue }
             if line.hasSuffix(":") { break }
             if matches(row, line) {
-                result.append(line)
+                guard !hasFirstRequest else { break }
+                hasFirstRequest = true
+                result = [line]
                 acceptsDollars = !line.contains("(")
-            } else if acceptsDollars && matches(dollars, line) {
+                if !acceptsDollars { break }
+            } else if hasFirstRequest && acceptsDollars && matches(dollars, line) {
                 result.append(line)
-                acceptsDollars = false
+                break
+            } else if hasFirstRequest {
+                break
             } else {
                 return nil
             }
-            if result.count > 40 { return nil }
         }
         let caption = result.joined(separator: "\n")
         if caption.isEmpty { return allowEmpty ? "Без заявок" : nil }
