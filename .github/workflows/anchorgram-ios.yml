@@ -7,6 +7,21 @@ on:
         description: Build device IPA after source checks
         type: boolean
         default: true
+      apple_team_id:
+        description: Optional Team ID override for this IPA
+        type: string
+        required: false
+        default: ''
+      bundle_id:
+        description: Optional Bundle ID override for this IPA
+        type: string
+        required: false
+        default: ''
+      app_group:
+        description: Optional App Group override for this IPA
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -63,9 +78,9 @@ jobs:
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          ANCHORGRAM_BUNDLE_ID: ${{ vars.ANCHORGRAM_BUNDLE_ID || 'org.libbro09.anchorgram' }}
-          APPLE_APP_GROUP: ${{ vars.APPLE_APP_GROUP }}
+          APPLE_TEAM_ID: ${{ inputs.apple_team_id || vars.APPLE_TEAM_ID }}
+          ANCHORGRAM_BUNDLE_ID: ${{ inputs.bundle_id || vars.ANCHORGRAM_BUNDLE_ID || 'org.libbro09.anchorgram' }}
+          APPLE_APP_GROUP: ${{ inputs.app_group || vars.APPLE_APP_GROUP }}
         run: python3 anchorgram/prepare_build.py
       - name: Fetch pinned dependencies
         if: inputs.build_ipa
