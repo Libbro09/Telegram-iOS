@@ -84,7 +84,7 @@ extension ChatControllerImpl {
         let alert = UIAlertController(title: "Быстрая отправка", message: "Выбери, куда отправить это сообщение", preferredStyle: .actionSheet)
         alert.addAction(UIAlertAction(title: "В Избранное · оригинал", style: .default, handler: { [weak self] _ in self?.anchorgramQuickSaved(message) }))
         for target in AnchorQuickStore.shared.targets(account) {
-            let mode = (target.saveOriginal ? "Избранное + " : "") + (target.requestsOnly ? "фото + заявки" : "оригинал")
+            let mode = (target.saveOriginal ? "Избранное + " : "") + (target.requestsOnly ? "фото + " + (target.firstRequestOnly ? "1 заявка" : "все заявки") : "оригинал")
             alert.addAction(UIAlertAction(title: target.label + " · " + mode, style: .default, handler: { [weak self] _ in
                 self?.anchorgramQuickSend(message.id, target: target)
             }))
@@ -144,7 +144,8 @@ extension ChatControllerImpl {
 
     private func anchorgramQuickEdit(_ target: AnchorQuickTarget) {
         let account = self.context.account.peerId.toInt64()
-        let alert = UIAlertController(title: "Настроить кнопку", message: target.destination + "\nВыбери, что отправлять", preferredStyle: .alert)
+        let requestMode = target.firstRequestOnly ? "первая" : "все"
+        let alert = UIAlertController(title: "Настроить кнопку", message: target.destination + "\nЗаявки: " + requestMode, preferredStyle: .alert)
         alert.addTextField { field in field.placeholder = "Название кнопки"; field.text = target.label }
         for requestsOnly in [true, false] {
             alert.addAction(UIAlertAction(title: requestsOnly ? "Сохранить: фото + заявки" : "Сохранить: оригинал", style: .default, handler: { [weak self, weak alert] _ in
@@ -165,6 +166,13 @@ extension ChatControllerImpl {
         alert.addAction(UIAlertAction(title: target.saveOriginal ? "Избранное: включено → выключить" : "Избранное: выключено → включить", style: .default, handler: { [weak self, weak alert] _ in
             var updated = target
             updated.saveOriginal.toggle()
+            let label = String((alert?.textFields?.first?.text ?? target.label).trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
+            if !label.isEmpty { updated.label = label }
+            self?.anchorgramQuickEdit(updated)
+        }))
+        alert.addAction(UIAlertAction(title: target.firstRequestOnly ? "Заявки: первая → все" : "Заявки: все → первая", style: .default, handler: { [weak self, weak alert] _ in
+            var updated = target
+            updated.firstRequestOnly.toggle()
             let label = String((alert?.textFields?.first?.text ?? target.label).trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
             if !label.isEmpty { updated.label = label }
             self?.anchorgramQuickEdit(updated)
@@ -299,7 +307,7 @@ private final class AnchorQuickSend {
                 self.fail("Исходное сообщение изменилось. Повтори отправку."); return
             }
             if self.target.requestsOnly {
-                guard let caption = AnchorQuickRules.paymentCaption(message.text),
+                guard let caption = AnchorQuickRules.paymentCaption(message.text, firstRequestOnly: self.target.firstRequestOnly),
                     let photo = message.media.compactMap({ $0 as? TelegramMediaImage }).first,
                     message.groupingKey == nil else {
                     self.fail("Нужно одно фото; непустой блок заявок должен быть распознаваемым. Ничего не отправлено."); return
@@ -311,7 +319,7 @@ private final class AnchorQuickSend {
                 self.ids = AnchorQuickRules.requestIds(message.text)
             }
             let restricted = AnchorQuickStore.shared.targets(controller.context.account.peerId.toInt64()).contains { $0.peer == self.target.peer && $0.requestsOnly }
-            let outgoingText = self.target.requestsOnly ? AnchorQuickRules.paymentCaption(message.text) ?? "" : message.text
+            let outgoingText = self.target.requestsOnly ? AnchorQuickRules.paymentCaption(message.text, firstRequestOnly: self.target.firstRequestOnly) ?? "" : message.text
             if restricted && AnchorQuickRules.containsEmail(outgoingText) {
                 self.fail("Email в этой платёжке запрещён. Подтверждение не отменяет запрет."); return
             }
@@ -373,7 +381,7 @@ private final class AnchorQuickSend {
         guard let controller = self.controller else { self.finish(); return }
         self.armTimeout(120)
         let detail = pending ? "Недавно добавлены в отправку с этого телефона:" : "В группе уже найдены заявки — у тебя или коллег:"
-        let preview = self.target.requestsOnly ? AnchorQuickRules.paymentCaption(self.snapshot?.text ?? "") ?? "" : self.snapshot?.text ?? ""
+        let preview = self.target.requestsOnly ? AnchorQuickRules.paymentCaption(self.snapshot?.text ?? "", firstRequestOnly: self.target.firstRequestOnly) ?? "" : self.snapshot?.text ?? ""
         let alert = UIAlertController(title: "Возможный дубль", message: self.target.destination + "\n\n" + detail + "\n" + ids.prefix(4).joined(separator: "\n") + "\n\n" + String(preview.prefix(240)) + "\n\nЕсли чек другой, можно отправить повторно.", preferredStyle: .alert)
         let cancel = UIAlertAction(title: "Отмена", style: .cancel, handler: { [weak self] _ in self?.finish() })
         alert.addAction(cancel)

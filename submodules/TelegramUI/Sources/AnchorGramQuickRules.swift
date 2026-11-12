@@ -8,9 +8,10 @@ struct AnchorQuickTarget: Codable, Equatable {
     var thread: Int64?
     var requestsOnly: Bool
     var saveOriginal: Bool = false
+    var firstRequestOnly: Bool = true
 
     private enum CodingKeys: String, CodingKey {
-        case id, label, destination, peer, thread, requestsOnly, saveOriginal
+        case id, label, destination, peer, thread, requestsOnly, saveOriginal, firstRequestOnly
     }
 }
 
@@ -24,6 +25,7 @@ extension AnchorQuickTarget {
         self.thread = try c.decodeIfPresent(Int64.self, forKey: .thread)
         self.requestsOnly = try c.decode(Bool.self, forKey: .requestsOnly)
         self.saveOriginal = try c.decodeIfPresent(Bool.self, forKey: .saveOriginal) ?? false
+        self.firstRequestOnly = try c.decodeIfPresent(Bool.self, forKey: .firstRequestOnly) ?? true
     }
 }
 
@@ -67,11 +69,11 @@ enum AnchorQuickRules {
         return email.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
 
-    static func paymentCaption(_ text: String) -> String? {
-        return latestRequests(text, allowEmpty: true)
+    static func paymentCaption(_ text: String, firstRequestOnly: Bool = true) -> String? {
+        return latestRequests(text, allowEmpty: true, firstRequestOnly: firstRequestOnly)
     }
 
-    static func latestRequests(_ text: String, allowEmpty: Bool = false) -> String? {
+    static func latestRequests(_ text: String, allowEmpty: Bool = false, firstRequestOnly: Bool = true) -> String? {
         guard text.utf8.count <= 262144 else { return nil }
         let lines = normalized(text).components(separatedBy: "\n")
         guard lines.count <= 2000 else { return nil }
@@ -84,14 +86,15 @@ enum AnchorQuickRules {
             if line.isEmpty { continue }
             if line.hasSuffix(":") { break }
             if matches(row, line) {
-                guard !hasFirstRequest else { break }
+                if hasFirstRequest && firstRequestOnly { break }
                 hasFirstRequest = true
-                result = [line]
+                result.append(line)
                 acceptsDollars = !line.contains("(")
-                if !acceptsDollars { break }
+                if !acceptsDollars && firstRequestOnly { break }
             } else if hasFirstRequest && acceptsDollars && matches(dollars, line) {
                 result.append(line)
-                break
+                acceptsDollars = false
+                if firstRequestOnly { break }
             } else if hasFirstRequest {
                 break
             } else {
