@@ -36,6 +36,7 @@ enum AnchorQuickRules {
     private static let amount = "[0-9][0-9., ]{0,24}"
     private static let row = try! NSRegularExpression(pattern: "\\A\\s*" + identifier + "\\s*-\\s*" + amount + "\\s+[a-z]{2,12}(?:\\s*\\(\\s*\\$?" + amount + "\\s*\\))?\\s*\\z", options: .caseInsensitive)
     private static let dollars = try! NSRegularExpression(pattern: "\\A\\s*\\(\\s*\\$?" + amount + "\\s*\\)\\s*\\z")
+    private static let trailingStatus = try! NSRegularExpression(pattern: "(?:\\s*[✅✔✓☑]\\x{FE0F}?)+\\s*\\z")
 
     static func normalized(_ text: String) -> String {
         var text = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
@@ -85,13 +86,14 @@ enum AnchorQuickRules {
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             if line.isEmpty { continue }
             if line.hasSuffix(":") { break }
-            if matches(row, line) {
+            let matchableLine = removingTrailingStatus(from: line)
+            if matches(row, matchableLine) {
                 if hasFirstRequest && firstRequestOnly { break }
                 hasFirstRequest = true
                 result.append(line)
                 acceptsDollars = !line.contains("(")
                 if !acceptsDollars && firstRequestOnly { break }
-            } else if hasFirstRequest && acceptsDollars && matches(dollars, line) {
+            } else if hasFirstRequest && acceptsDollars && matches(dollars, matchableLine) {
                 result.append(line)
                 acceptsDollars = false
                 if firstRequestOnly { break }
@@ -105,6 +107,13 @@ enum AnchorQuickRules {
         if caption.isEmpty { return allowEmpty ? "Без заявок" : nil }
         guard caption.utf16.count <= 1024 else { return nil }
         return caption
+    }
+
+    private static func removingTrailingStatus(from line: String) -> String {
+        let range = NSRange(line.startIndex..., in: line)
+        guard let match = trailingStatus.firstMatch(in: line, range: range),
+            let matchRange = Range(match.range, in: line) else { return line }
+        return String(line[..<matchRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func matches(_ expression: NSRegularExpression, _ text: String) -> Bool {
