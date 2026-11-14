@@ -135,11 +135,19 @@ extension ChatControllerImpl {
             self.anchorgramQuickEdit(target)
         }
         self.chatDisplayNode.dismissInput()
-        guard let navigation = self.effectiveNavigationController else {
-            self.anchorgramToast("Не удалось открыть выбор получателя. Вернись к списку чатов и открой чат заново.")
-            return
+        // The quick-forward action is opened from an action sheet. Let that
+        // presentation finish dismissing before pushing the peer picker; doing
+        // both transitions in the same run loop can leave a black screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self else { return }
+            guard self.isViewLoaded, self.view.window != nil,
+                  let navigation = self.effectiveNavigationController,
+                  navigation.topViewController === self else {
+                self.anchorgramToast("Не удалось открыть выбор получателя. Вернись к списку чатов и открой чат заново.")
+                return
+            }
+            navigation.pushViewController(picker)
         }
-        navigation.pushViewController(picker)
     }
 
     private func anchorgramQuickEdit(_ target: AnchorQuickTarget) {
